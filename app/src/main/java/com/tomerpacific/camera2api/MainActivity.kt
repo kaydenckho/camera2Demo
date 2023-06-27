@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.hardware.camera2.params.StreamConfigurationMap
@@ -26,8 +27,10 @@ import android.provider.Settings
 import android.util.Log
 import android.util.Size
 import android.util.SparseIntArray
+import android.view.OrientationEventListener
 import android.view.Surface
 import android.view.TextureView
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -56,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var imageReader: ImageReader
     private lateinit var previewSize: Size
     private lateinit var videoSize: Size
+
     private var shouldProceedWithOnResume: Boolean = true
     private var orientations : SparseIntArray = SparseIntArray(4).apply {
         append(Surface.ROTATION_0, 0)
@@ -70,10 +74,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
         textureView = findViewById(R.id.texture_view)
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-
         findViewById<Button>(R.id.take_photo_btn).apply {
             setOnClickListener {
                 takePhoto()
@@ -129,7 +131,7 @@ class MainActivity : AppCompatActivity() {
             if (streamConfigurationMap != null) {
                 previewSize = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!.getOutputSizes(ImageFormat.JPEG).maxByOrNull { it.height * it.width }!!
                 videoSize = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!.getOutputSizes(MediaRecorder::class.java).maxByOrNull { it.height * it.width }!!
-                imageReader = ImageReader.newInstance(1080, 1440, ImageFormat.JPEG, 1)
+                imageReader = ImageReader.newInstance(textureView.width, textureView.height, ImageFormat.JPEG, 1)
                 imageReader.setOnImageAvailableListener(onImageAvailableListener, backgroundHandler)
             }
             cameraId = id
@@ -175,9 +177,7 @@ class MainActivity : AppCompatActivity() {
     private fun takePhoto() {
         captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
         captureRequestBuilder.addTarget(imageReader.surface)
-        val rotation = windowManager.defaultDisplay.rotation
         captureRequestBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)
-        captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, orientations.get(Surface.ROTATION_90))
         cameraCaptureSession.capture(captureRequestBuilder.build(), captureCallback, null)
     }
 
@@ -213,12 +213,16 @@ class MainActivity : AppCompatActivity() {
      * Surface Texture Listener
      */
 
+    lateinit var frame : Bitmap
+    var count = 0
+
     private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
         @SuppressLint("MissingPermission")
         override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
             if (wasCameraPermissionWasGiven()) {
                 setupCamera()
                 connectCamera()
+                frame = Bitmap.createBitmap(textureView.width, textureView.height, Bitmap.Config.ARGB_8888)
             }
         }
 
@@ -231,7 +235,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
-
+            if (count++%125==0){
+                takePhoto()
+            }
         }
     }
 
@@ -359,9 +365,16 @@ class MainActivity : AppCompatActivity() {
         override fun onImageAvailable(reader: ImageReader) {
             Toast.makeText(this@MainActivity, "Photo Taken!", Toast.LENGTH_SHORT).show()
             val image: Image = reader.acquireLatestImage()
-            saveImage(image.toBitmap(), "${System.currentTimeMillis()}.png")
+            val bmp = rotateBitmap(image.toBitmap(), 90.0f)
+            saveImage(bmp, "${System.currentTimeMillis()}")
             image.close()
         }
+    }
+
+    private fun rotateBitmap(bitmap: Bitmap, rotationDegrees: Float): Bitmap {
+        val matrix = Matrix()
+        matrix.postRotate(rotationDegrees)
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
     /**
