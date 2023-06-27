@@ -243,7 +243,7 @@ class MainActivity : AppCompatActivity() {
         override fun onOpened(camera: CameraDevice) {
             cameraDevice = camera
             val surfaceTexture : SurfaceTexture? = textureView.surfaceTexture
-            surfaceTexture?.setDefaultBufferSize(previewSize.width, previewSize.height)
+            surfaceTexture?.setDefaultBufferSize(findViewById<TextureView>(R.id.texture_view).width, findViewById<TextureView>(R.id.texture_view).height)
             val previewSurface: Surface = Surface(surfaceTexture)
 
             captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
